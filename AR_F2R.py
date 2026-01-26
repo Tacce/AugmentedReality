@@ -9,11 +9,14 @@ h_aug = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
 fps = cap.get(cv2.CAP_PROP_FPS)
 
 fourcc = cv2.VideoWriter_fourcc(*'DIVX')
-out = cv2.VideoWriter('output.avi', fourcc, fps, (w_aug,  h_aug))
+out = cv2.VideoWriter('output_F2R.avi', fourcc, fps, (w_aug,  h_aug))
 
 ref_frame = cv2.imread('ReferenceFrame.png')
 h_frame, w_frame = ref_frame.shape[0], ref_frame.shape[1]
 object_mask = cv2.imread('ObjectMask.PNG',cv2.IMREAD_GRAYSCALE)
+
+kernel = np.ones((50,50), np.uint8)
+mask_dilated = cv2.dilate(object_mask, kernel, iterations=1)
 
 ref_frame_masked = ref_frame.copy()
 ref_frame_masked[object_mask==0] = 0
@@ -38,7 +41,7 @@ while cap.isOpened():
         print("Can't receive frame (stream end?). Exiting ...")
         break
     
-    kp_frame = sift.detect(frame)
+    kp_frame = sift.detect(frame, mask=mask_dilated)
     kp_frame, des_frame = sift.compute(frame, kp_frame)
 
     FLANN_INDEX_KDTREE = 1
@@ -60,6 +63,8 @@ while cap.isOpened():
     warped = cv2.warpPerspective(aug_layer, M, (w_frame, h_frame), flags=cv2.INTER_LINEAR)
     warp_mask = cv2.warpPerspective(aug_mask, M, (w_frame, h_frame), flags=cv2.INTER_LINEAR) < 250
 
+    object_warp_mask = cv2.warpPerspective(object_mask, M, (w_frame, h_frame), flags=cv2.INTER_NEAREST)
+
     '''
     # Illumination correction
     warp_object_mask = cv2.warpPerspective(object_mask, M, (w_frame, h_frame), flags=cv2.INTER_LINEAR) > 250
@@ -71,6 +76,8 @@ while cap.isOpened():
     warped[warp_mask] = frame[warp_mask]
     
     out.write(warped)
+
+    mask_dilated = cv2.dilate(object_warp_mask, kernel, iterations=1)
 
     # plt.axis('off')
     # plt.imshow(cv2.cvtColor(warped, cv2.COLOR_BGR2RGB))
