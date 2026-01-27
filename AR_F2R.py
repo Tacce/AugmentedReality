@@ -1,6 +1,7 @@
 import numpy as np
 import cv2
 from matplotlib import pyplot as plt
+from utils import get_mean_and_std, apply_color_transfer_weighted
 
 cap = cv2.VideoCapture('Multiple View.avi')
 
@@ -20,19 +21,20 @@ mask_dilated = cv2.dilate(object_mask, kernel, iterations=1)
 
 ref_frame_masked = ref_frame.copy()
 ref_frame_masked[object_mask==0] = 0
-# ref_frame_intensity = np.array(cv2.mean(ref_frame, mask=object_mask)[:3])
 
 aug_layer = cv2.imread('AugmentedLayer.PNG')
 aug_layer = aug_layer[:h_frame, :w_frame]
 aug_mask = cv2.imread('AugmentedLayerMask.PNG',cv2.IMREAD_GRAYSCALE)
 aug_mask = aug_mask[:h_frame, :w_frame]
 
-H = np.eye(3)
-
 # SIFT detector
 sift = cv2.SIFT_create()
 kp_rf = sift.detect(ref_frame_masked)
 kp_rf, des_rf = sift.compute(ref_frame_masked, kp_rf)
+
+# Color Specification
+aug_mean, aug_std = get_mean_and_std(aug_layer, aug_mask)
+ref_mean, ref_std = get_mean_and_std(ref_frame, object_mask)
 
 while cap.isOpened():
 
@@ -61,23 +63,26 @@ while cap.isOpened():
     M, match_mask = cv2.findHomography(src_pts, dst_pts, cv2.RANSAC, 5.0)
     
     warped = cv2.warpPerspective(aug_layer, M, (w_frame, h_frame), flags=cv2.INTER_LINEAR)
-    warp_mask = cv2.warpPerspective(aug_mask, M, (w_frame, h_frame), flags=cv2.INTER_LINEAR) < 250
+    warp_aug_mask = cv2.warpPerspective(aug_mask, M, (w_frame, h_frame), flags=cv2.INTER_LINEAR) < 250
 
-    object_warp_mask = cv2.warpPerspective(object_mask, M, (w_frame, h_frame), flags=cv2.INTER_NEAREST)
+    warp_object_mask = cv2.warpPerspective(object_mask, M, (w_frame, h_frame), flags=cv2.INTER_NEAREST)
+    
+    # Color Transfer
+    tgt_mean, tgt_std = get_mean_and_std(frame, warp_object_mask)
 
-    '''
-    # Illumination correction
-    warp_object_mask = cv2.warpPerspective(object_mask, M, (w_frame, h_frame), flags=cv2.INTER_LINEAR) > 250
-    frame_intensity = np.array(cv2.mean(frame, mask=warp_object_mask.astype(np.uint8))[:3])
+    delta_mean = np.linalg.norm(tgt_mean - ref_mean)
+    delta_std  = np.linalg.norm(tgt_std - ref_std)
+    strength = delta_mean + 0.5 * delta_std
 
-    light_correction = frame_intensity / ref_frame_intensity
-    warped = np.clip(warped * light_correction, 0, 255).astype(np.uint8)
-    '''
-    warped[warp_mask] = frame[warp_mask]
+    LOW, HIGH = 5, 60
+    w = np.clip((strength - LOW) / (HIGH - LOW), 0.0, 1.0)
+    warped = apply_color_transfer_weighted(warped, aug_mean, aug_std, tgt_mean, tgt_std, w)
+
+    warped[warp_aug_mask] = frame[warp_aug_mask]
     
     out.write(warped)
 
-    mask_dilated = cv2.dilate(object_warp_mask, kernel, iterations=1)
+    mask_dilated = cv2.dilate(warp_object_mask, kernel, iterations=1)
 
     # plt.axis('off')
     # plt.imshow(cv2.cvtColor(warped, cv2.COLOR_BGR2RGB))
