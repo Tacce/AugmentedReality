@@ -1,6 +1,8 @@
 import numpy as np
 import cv2
 from matplotlib import pyplot as plt
+from utils import get_mean_and_std, apply_color_transfer
+
 
 cap = cv2.VideoCapture('Multiple View.avi')
 
@@ -33,6 +35,9 @@ sift = cv2.SIFT_create()
 kp_prev = sift.detect(ref_frame_masked)
 kp_prev, des_prev = sift.compute(ref_frame_masked, kp_prev)
 
+# Color Specification
+aug_mean, aug_std = get_mean_and_std(aug_layer, aug_mask)
+
 first_frame = True
 
 while cap.isOpened():
@@ -47,8 +52,8 @@ while cap.isOpened():
         output_frame = aug_layer.copy()
         mask = aug_mask == 0
         output_frame[mask] = frame[mask]
+        prev_mean, prev_std = get_mean_and_std(output_frame, object_mask)
         out.write(output_frame)   
-
         continue
     
     kp_frame = sift.detect(frame, mask=mask_dilated)
@@ -73,17 +78,23 @@ while cap.isOpened():
     H_acc = M @ H_acc
 
     warped = cv2.warpPerspective(aug_layer, H_acc, (w_frame, h_frame), flags=cv2.INTER_LINEAR)
-    warp_mask = cv2.warpPerspective(aug_mask, H_acc, (w_frame, h_frame), flags=cv2.INTER_LINEAR) <250
+    warp_aug_mask = cv2.warpPerspective(aug_mask, H_acc, (w_frame, h_frame), flags=cv2.INTER_LINEAR) <250
 
-    object_warp_mask = cv2.warpPerspective(object_mask, H_acc, (w_frame, h_frame), flags=cv2.INTER_NEAREST)
+    warp_object_mask = cv2.warpPerspective(object_mask, H_acc, (w_frame, h_frame), flags=cv2.INTER_NEAREST)
 
-    warped[warp_mask] = frame[warp_mask]
+    # Color Transfer
+    tgt_mean, tgt_std = get_mean_and_std(frame, warp_object_mask)
+    
+    warped = apply_color_transfer(warped, prev_mean, prev_std, aug_mean, aug_std, tgt_mean, tgt_std)
+
+    warped[warp_aug_mask] = frame[warp_aug_mask]
     
     out.write(warped)
 
     kp_prev = kp_frame
     des_prev = des_frame
-    mask_dilated = cv2.dilate(object_warp_mask, kernel, iterations=1)
+    mask_dilated = cv2.dilate(warp_object_mask, kernel, iterations=1)
+    prev_mean, prev_std = get_mean_and_std(warped, warp_object_mask)
 
     # plt.axis('off')
     # plt.imshow(cv2.cvtColor(mask_dilated, cv2.COLOR_BGR2RGB))

@@ -1,7 +1,7 @@
 import numpy as np
 import cv2
 from matplotlib import pyplot as plt
-from utils import get_mean_and_std, apply_color_transfer_weighted
+from utils import get_mean_and_std, apply_color_transfer
 
 cap = cv2.VideoCapture('Multiple View.avi')
 
@@ -33,8 +33,12 @@ kp_rf = sift.detect(ref_frame_masked)
 kp_rf, des_rf = sift.compute(ref_frame_masked, kp_rf)
 
 # Color Specification
+first_frame =  aug_layer.copy()
+first_frame[aug_mask==0] = ref_frame[aug_mask==0]
+comp_mean, comp_std = get_mean_and_std(first_frame, object_mask)
 aug_mean, aug_std = get_mean_and_std(aug_layer, aug_mask)
 ref_mean, ref_std = get_mean_and_std(ref_frame, object_mask)
+
 
 while cap.isOpened():
 
@@ -66,17 +70,11 @@ while cap.isOpened():
     warp_aug_mask = cv2.warpPerspective(aug_mask, M, (w_frame, h_frame), flags=cv2.INTER_LINEAR) < 250
 
     warp_object_mask = cv2.warpPerspective(object_mask, M, (w_frame, h_frame), flags=cv2.INTER_NEAREST)
-    
+
     # Color Transfer
     tgt_mean, tgt_std = get_mean_and_std(frame, warp_object_mask)
 
-    delta_mean = np.linalg.norm(tgt_mean - ref_mean)
-    delta_std  = np.linalg.norm(tgt_std - ref_std)
-    strength = delta_mean + 0.5 * delta_std
-
-    LOW, HIGH = 5, 60
-    w = np.clip((strength - LOW) / (HIGH - LOW), 0.0, 1.0)
-    warped = apply_color_transfer_weighted(warped, aug_mean, aug_std, tgt_mean, tgt_std, w)
+    warped = apply_color_transfer(warped, comp_mean, comp_std, aug_mean, aug_std,  tgt_mean, tgt_std)
 
     warped[warp_aug_mask] = frame[warp_aug_mask]
     
