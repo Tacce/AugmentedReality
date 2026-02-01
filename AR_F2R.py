@@ -32,6 +32,11 @@ sift = cv2.SIFT_create()
 kp_rf = sift.detect(ref_frame_masked)
 kp_rf, des_rf = sift.compute(ref_frame_masked, kp_rf)
 
+FLANN_INDEX_KDTREE = 1
+index_params = dict(algorithm = FLANN_INDEX_KDTREE, trees = 5)
+search_params = dict(checks = 50)
+flann = cv2.FlannBasedMatcher(index_params, search_params)
+
 # Color Specification
 first_frame =  aug_layer.copy()
 first_frame[aug_mask==0] = ref_frame[aug_mask==0]
@@ -50,11 +55,6 @@ while cap.isOpened():
     kp_frame = sift.detect(frame, mask=mask_dilated)
     kp_frame, des_frame = sift.compute(frame, kp_frame)
 
-    FLANN_INDEX_KDTREE = 1
-    index_params = dict(algorithm = FLANN_INDEX_KDTREE, trees = 5)
-    search_params = dict(checks = 50)
-
-    flann = cv2.FlannBasedMatcher(index_params, search_params)
     matches = flann.knnMatch(des_rf,des_frame,k=2)
 
     good = []
@@ -74,7 +74,7 @@ while cap.isOpened():
     # Color Transfer
     tgt_mean, tgt_std = get_mean_and_std(frame, warp_object_mask)
 
-    warped = apply_color_transfer(warped, comp_mean, comp_std, aug_mean, aug_std,  tgt_mean, tgt_std)
+    warped = apply_color_transfer(warped, ref_mean, aug_mean, aug_std,  tgt_mean, tgt_std)
 
     warped[warp_aug_mask] = frame[warp_aug_mask]
     
