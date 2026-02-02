@@ -3,6 +3,7 @@ import cv2
 from matplotlib import pyplot as plt
 from utils import get_mean_and_std, apply_color_transfer
 
+# SETUP INPUT AND OUTPUT FILES
 cap = cv2.VideoCapture('Multiple View.avi')
 
 w_aug = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
@@ -32,18 +33,18 @@ sift = cv2.SIFT_create()
 kp_rf = sift.detect(ref_frame_masked)
 kp_rf, des_rf = sift.compute(ref_frame_masked, kp_rf)
 
+# FLANN matcher
 FLANN_INDEX_KDTREE = 1
 index_params = dict(algorithm = FLANN_INDEX_KDTREE, trees = 5)
 search_params = dict(checks = 50)
 flann = cv2.FlannBasedMatcher(index_params, search_params)
 
-# Color Specification
+# Color Specification for augmented layer
 first_frame =  aug_layer.copy()
 first_frame[aug_mask==0] = ref_frame[aug_mask==0]
 comp_mean, comp_std = get_mean_and_std(first_frame, object_mask)
 aug_mean, aug_std = get_mean_and_std(aug_layer, aug_mask)
 ref_mean, ref_std = get_mean_and_std(ref_frame, object_mask)
-
 
 while cap.isOpened():
 
@@ -52,11 +53,12 @@ while cap.isOpened():
         print("Can't receive frame (stream end?). Exiting ...")
         break
     
+    # Feature Detection using SIFT
     kp_frame = sift.detect(frame, mask=mask_dilated)
     kp_frame, des_frame = sift.compute(frame, kp_frame)
-
+    
+    # Feature Matching using FLANN
     matches = flann.knnMatch(des_rf,des_frame,k=2)
-
     good = []
     for m,n in matches:
         if m.distance < 0.8*n.distance:
@@ -64,6 +66,8 @@ while cap.isOpened():
 
     src_pts = np.float32([kp_rf[m.queryIdx].pt for m in good]).reshape(-1,1,2)
     dst_pts = np.float32([kp_frame[m.trainIdx].pt for m in good]).reshape(-1,1,2)
+
+    # Homography Estimation using RANSAC 
     M, match_mask = cv2.findHomography(src_pts, dst_pts, cv2.RANSAC, 5.0)
     
     warped = cv2.warpPerspective(aug_layer, M, (w_frame, h_frame), flags=cv2.INTER_LINEAR)
@@ -74,12 +78,13 @@ while cap.isOpened():
     # Color Transfer
     tgt_mean, tgt_std = get_mean_and_std(frame, warp_object_mask)
 
-    warped = apply_color_transfer(warped, ref_mean, aug_mean, aug_std,  tgt_mean, tgt_std)
+    warped = apply_color_transfer(warped, ref_mean, ref_std, aug_mean, aug_std,  tgt_mean, tgt_std)
 
     warped[warp_aug_mask] = frame[warp_aug_mask]
     
     out.write(warped)
 
+    # Mask for feature detection in next iteration
     mask_dilated = cv2.dilate(warp_object_mask, kernel, iterations=1)
 
     # plt.axis('off')
