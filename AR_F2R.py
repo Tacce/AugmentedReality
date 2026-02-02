@@ -1,7 +1,7 @@
 import numpy as np
 import cv2
 from matplotlib import pyplot as plt
-from utils import get_mean_and_std, apply_color_transfer
+from color_transfer import get_mean_and_std, apply_color_transfer
 
 # SETUP INPUT AND OUTPUT FILES
 cap = cv2.VideoCapture('Multiple View.avi')
