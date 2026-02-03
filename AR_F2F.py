@@ -46,7 +46,7 @@ flann = cv2.FlannBasedMatcher(index_params, search_params)
 aug_mean, aug_std = get_mean_and_std(aug_layer, aug_mask)
 ref_mean, ref_std = get_mean_and_std(ref_frame, object_mask)
 
-first_frame = True
+MIN_MATCH_COUNT = 4
 
 while cap.isOpened():
 
@@ -54,18 +54,15 @@ while cap.isOpened():
     if not ret or frame is None:
         print("Can't receive frame (stream end?). Exiting ...")
         break
-
-    if first_frame:
-        first_frame = False
-        output_frame = aug_layer.copy()
-        mask = aug_mask == 0
-        output_frame[mask] = frame[mask]
-        out.write(output_frame)   
-        continue
     
     # Feature Detection using SIFT
     kp_frame = sift.detect(frame, mask=mask_dilated)
     kp_frame, des_frame = sift.compute(frame, kp_frame)
+    
+    # If not enough features are detected, try again without the mask
+    if des_frame is None or len(kp_frame) < MIN_MATCH_COUNT:
+        kp_frame = sift.detect(frame)
+        kp_frame, des_frame = sift.compute(frame, kp_frame)
 
     # Feature Matching using FLANN
     matches = flann.knnMatch(des_prev,des_frame,k=2)
@@ -79,6 +76,13 @@ while cap.isOpened():
     
     # Homography Estimation using RANSAC 
     M, match_mask = cv2.findHomography(src_pts, dst_pts, cv2.RANSAC, 5.0)
+    
+    # If homography estimation fails, skip the frame
+    if M is None:
+        print("Homography estimation failed. Skipping frame.")
+        mask_dilated = None
+        out.write(frame)
+        continue
 
     # Update accumulated homography
     H_acc = M @ H_acc
@@ -107,3 +111,6 @@ while cap.isOpened():
     # plt.axis('off')
     # plt.imshow(cv2.cvtColor(mask_dilated, cv2.COLOR_BGR2RGB))
     # plt.show()
+
+cap.release()
+out.release()

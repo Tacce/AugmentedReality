@@ -46,6 +46,8 @@ comp_mean, comp_std = get_mean_and_std(first_frame, object_mask)
 aug_mean, aug_std = get_mean_and_std(aug_layer, aug_mask)
 ref_mean, ref_std = get_mean_and_std(ref_frame, object_mask)
 
+MIN_MATCH_COUNT = 4
+
 while cap.isOpened():
 
     ret, frame = cap.read()
@@ -56,7 +58,12 @@ while cap.isOpened():
     # Feature Detection using SIFT
     kp_frame = sift.detect(frame, mask=mask_dilated)
     kp_frame, des_frame = sift.compute(frame, kp_frame)
-    
+
+    # If not enough features are detected, try again without the mask
+    if des_frame is None or len(kp_frame) < MIN_MATCH_COUNT:
+        kp_frame = sift.detect(frame)
+        kp_frame, des_frame = sift.compute(frame, kp_frame)
+
     # Feature Matching using FLANN
     matches = flann.knnMatch(des_rf,des_frame,k=2)
     good = []
@@ -69,6 +76,13 @@ while cap.isOpened():
 
     # Homography Estimation using RANSAC 
     M, match_mask = cv2.findHomography(src_pts, dst_pts, cv2.RANSAC, 5.0)
+
+    # If homography estimation fails, skip the frame
+    if M is None:
+        print("Homography estimation failed. Skipping frame.")
+        mask_dilated = None
+        out.write(frame)
+        continue
     
     warped = cv2.warpPerspective(aug_layer, M, (w_frame, h_frame), flags=cv2.INTER_LINEAR)
     warp_aug_mask = cv2.warpPerspective(aug_mask, M, (w_frame, h_frame), flags=cv2.INTER_LINEAR) < 250
@@ -90,3 +104,6 @@ while cap.isOpened():
     # plt.axis('off')
     # plt.imshow(cv2.cvtColor(warped, cv2.COLOR_BGR2RGB))
     # plt.show()
+
+cap.release()
+out.release()

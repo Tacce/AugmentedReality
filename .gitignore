@@ -1,7 +1,7 @@
 /Augmented Reality Project (update).pdf
 test.py
 output_test.avi
-__pycache__/utils.cpython-311.pyc
+__pycache__/
 AR_Hybrid.py
 output_Hybrid.avi
 test.avi
@@ -9,3 +9,4 @@ output_F2R_red.avi
 Red.avi
 output_F2R_natural.avi
 Natural_filter.avi
+AR_F2F.py
