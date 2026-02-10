@@ -46,7 +46,7 @@ flann = cv2.FlannBasedMatcher(index_params, search_params)
 aug_mean, aug_std = get_mean_and_std(aug_layer, aug_mask)
 ref_mean, ref_std = get_mean_and_std(ref_frame, object_mask)
 
-MIN_MATCH_COUNT = 4
+MIN_MATCH_COUNT = 10
 
 while cap.isOpened():
 
@@ -55,21 +55,27 @@ while cap.isOpened():
         print("Can't receive frame (stream end?). Exiting ...")
         break
     
-    # Feature Detection using SIFT
-    kp_frame = sift.detect(frame, mask=mask_dilated)
-    kp_frame, des_frame = sift.compute(frame, kp_frame)
+    # Try with dilated mask first, then without mask if not enough matches are found    
+    masks = [mask_dilated, None] 
     
-    # If not enough features are detected, try again without the mask
-    if des_frame is None or len(kp_frame) < MIN_MATCH_COUNT:
-        kp_frame = sift.detect(frame)
+    for mask in masks:
+        # Feature Detection using SIFT
+        kp_frame = sift.detect(frame, mask=mask)
         kp_frame, des_frame = sift.compute(frame, kp_frame)
+        
+        # Feature Matching using FLANN
+        matches = flann.knnMatch(des_prev,des_frame,k=2)
+        good = []
+        for m,n in matches:
+            if m.distance < 0.8*n.distance:
+                good.append(m)
+        if len(good) >= MIN_MATCH_COUNT:
+            break
 
-    # Feature Matching using FLANN
-    matches = flann.knnMatch(des_prev,des_frame,k=2)
-    good = []
-    for m,n in matches:
-        if m.distance < 0.8*n.distance:
-            good.append(m)
+    if len(good) < MIN_MATCH_COUNT:
+        print("Not enough matches are found. Skipping frame.")
+        out.write(frame)
+        continue
 
     src_pts = np.float32([kp_prev[m.queryIdx].pt for m in good]).reshape(-1,1,2)
     dst_pts = np.float32([kp_frame[m.trainIdx].pt for m in good]).reshape(-1,1,2)
